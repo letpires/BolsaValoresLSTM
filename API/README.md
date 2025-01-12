@@ -55,19 +55,6 @@ Para garantir um ambiente isolado:
    pip install -r requirements.txt
    ```
 
-2. Caso não tenha o `requirements.txt`, crie-o com o seguinte conteúdo:
-   ```text
-   fastapi
-   uvicorn
-   matplotlib
-   numpy
-   ```
-
-3. Instale novamente:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
 ---
 
 ## **Estrutura de Pastas**
