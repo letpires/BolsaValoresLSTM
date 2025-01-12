@@ -1,4 +1,4 @@
-# API de Previsão de Preços
+# 💲 Documentação da API
 
 Esta API foi desenvolvida para realizar previsões de preços com base em dados históricos fornecidos pelo usuário. A API utiliza **FastAPI** como framework principal e pode ser executada localmente ou em um contêiner Docker.
 
@@ -179,4 +179,4 @@ A organização do projeto:
 
 ---
 
-Com esta documentação, você pode montar o ambiente, entender os métodos da API e executá-la localmente ou em um contêiner Docker. Se precisar de mais detalhes, sinta-se à vontade para perguntar! 🚀
+Com esta documentação, você pode montar o ambiente, entender os métodos da API e executá-la localmente ou em um contêiner Docker. 🚀
