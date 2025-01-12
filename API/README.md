@@ -1,4 +1,4 @@
-# 💲 Documentação da API
+# 💲 Documentação da API de Previsão de Preços de Ações
 
 Esta API foi desenvolvida para realizar previsões de preços com base em dados históricos fornecidos pelo usuário. A API utiliza **FastAPI** como framework principal e pode ser executada localmente ou em um contêiner Docker.
 
