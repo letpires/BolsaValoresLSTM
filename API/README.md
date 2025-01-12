@@ -99,12 +99,12 @@ A organização do projeto:
 
 3. A API estará disponível em:
    ```
-http://127.0.0.1:8000
+    http://127.0.0.1:8000
    ```
 
 4. Teste os endpoints acessando o **Swagger UI**:
    ```
-http://127.0.0.1:8000/docs
+    http://127.0.0.1:8000/docs
    ```
 
 ---
@@ -174,7 +174,7 @@ http://127.0.0.1:8000/docs
 3. **Acessar a API**:
    A API estará disponível em:
    ```
-http://127.0.0.1:8000
+   http://127.0.0.1:8000
    ```
 
 ---
