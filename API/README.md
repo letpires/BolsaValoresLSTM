@@ -142,6 +142,9 @@ A organização do projeto:
    - **Endpoint**: `GET /performance/plot`
    - **Descrição**: Gera um gráfico visual dos tempos de resposta registrados.
    - **Saída**: Um gráfico exibido no navegador.
+   - **Exemplo de Gráfico Gerado**:
+
+     ![Exemplo de Gráfico de Performance](https://via.placeholder.com/800x400.png?text=Exemplo+de+Gr%C3%A1fico+de+Performance)
 
 ---
 
