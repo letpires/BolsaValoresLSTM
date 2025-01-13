@@ -15,9 +15,10 @@ import base64
 # Configuração do logger para monitoramento
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Inicialização do aplicativo FastAPI
 app = FastAPI()
 
-# Configuração do CORS
+# Configuração do CORS para permitir requisições de qualquer origem
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,28 +27,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Dados do modelo treinado (fake para exemplo)
-# Substitua isso com o seu modelo final quando disponível
+# Classe FakeModel para simular previsões de preços
 class FakeModel:
+    """
+    Classe que simula um modelo de previsão de preços com base nos dados históricos fornecidos.
+    """
     def predict(self, historical_prices: List[float], future_days: int) -> List[float]:
-        # Gera previsões fake, apenas como exemplo
+        # Gera previsões baseadas no último preço da lista de preços históricos
         last_price = historical_prices[-1] if historical_prices else 100
         return [last_price + i * 5 for i in range(1, future_days + 1)]
 
 # Instancia o modelo fake
 model = FakeModel()
 
-# Define o modelo de dados para a entrada
+# Classe para validar os dados de entrada fornecidos pelo usuário
 class HistoricalData(BaseModel):
+    """
+    Representa os dados de entrada esperados pela API para previsão de preços.
+    - `prices`: Lista de preços históricos.
+    - `days_ahead`: Número de dias para prever no futuro.
+    """
     prices: List[float]  # Lista de preços históricos fornecidos pelo usuário
     days_ahead: int  # Número de dias para prever no futuro
 
-# Armazena os tempos de resposta
+# Lista para armazenar os tempos de resposta das requisições
 performance_data: List[Dict[str, float]] = []
 
-# Middleware para medir o tempo de resposta
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
+    """
+    Middleware para calcular o tempo de processamento de cada requisição e armazená-lo.
+    Adiciona um cabeçalho `X-Process-Time` à resposta.
+    """
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
@@ -64,6 +75,18 @@ async def add_process_time_header(request: Request, call_next):
 
 @app.post("/predict")
 def predict_prices(data: HistoricalData):
+    """
+    Endpoint para realizar previsões de preços com base nos dados históricos fornecidos.
+    - Entrada (JSON):
+        {
+            "prices": [100, 105, 110, 120],
+            "days_ahead": 3
+        }
+    - Saída (JSON):
+        {
+            "future_prices": [125, 130, 135]
+        }
+    """
     try:
         if len(data.prices) < 1:
             raise ValueError("É necessário fornecer pelo menos um preço histórico.")
@@ -83,12 +106,24 @@ def predict_prices(data: HistoricalData):
 
 @app.get("/performance")
 def get_performance_data():
-    """Retorna os tempos de resposta registrados para monitoramento."""
+    """
+    Endpoint para retornar os tempos de resposta registrados durante o uso da API.
+    - Saída (JSON):
+        {
+            "performance": [
+                {"path": "/predict", "process_time": 0.1234},
+                {"path": "/predict", "process_time": 0.0987}
+            ]
+        }
+    """
     return {"performance": performance_data}
 
 @app.get("/performance/plot", response_class=HTMLResponse)
 def plot_performance():
-    """Gera um gráfico visual dos tempos de resposta registrados."""
+    """
+    Endpoint para gerar e exibir um gráfico visual dos tempos de resposta registrados.
+    - Saída: Gráfico exibido como uma imagem no navegador.
+    """
     if not performance_data:
         return HTMLResponse("<h3>Não há dados de performance registrados ainda.</h3>")
 
@@ -124,4 +159,11 @@ def plot_performance():
 
 @app.get("/")
 def root():
+    """
+    Endpoint para verificar se a API está funcionando.
+    - Saída (JSON):
+        {
+            "message": "API de previsão de preços está funcionando! Envie dados históricos e o número de dias para obter previsões."
+        }
+    """
     return {"message": "API de previsão de preços está funcionando! Envie dados históricos e o número de dias para obter previsões."}
