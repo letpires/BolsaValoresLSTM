@@ -13,6 +13,7 @@ Esta API foi desenvolvida para realizar previsões de preços com base em dados 
 - [Executar Localmente](#executar-localmente)
 - [Métodos da API](#métodos-da-api)
 - [Montar e Rodar com Docker](#montar-e-rodar-com-docker)
+- [Deploy na Nuvem](#deploy-na-nuvem)
 
 ---
 
@@ -86,12 +87,12 @@ A organização do projeto:
 
 3. A API estará disponível em:
    ```
-    http://127.0.0.1:8000
+   http://127.0.0.1:8000
    ```
 
 4. Teste os endpoints acessando o **Swagger UI**:
    ```
-    http://127.0.0.1:8000/docs
+   http://127.0.0.1:8000/docs
    ```
 
 ---
@@ -110,18 +111,17 @@ A organização do projeto:
 
 ### 2. **Previsão de Preços**
    - **Endpoint**: `POST /predict`
-   - **Descrição**: Recebe dados históricos e o número de dias para prever preços futuros.
+   - **Descrição**: Recebe dados históricos e retorna o preço previsto com base nos últimos 60 valores fornecidos.
    - **Entrada**:
      ```json
      {
-       "prices": [100, 105, 110, 120],
-       "days_ahead": 3
+       "prices": [100, 105, 110, 120, ...]
      }
      ```
    - **Saída**:
      ```json
      {
-       "future_prices": [125, 130, 135]
+       "future_price": 125.0
      }
      ```
 
@@ -142,7 +142,15 @@ A organização do projeto:
    - **Endpoint**: `GET /performance/plot`
    - **Descrição**: Gera um gráfico visual dos tempos de resposta registrados.
    - **Saída**: Um gráfico exibido no navegador.
-   
+
+### 5. **Interface Gráfica para Previsões**
+   - **Endpoint**: `GET /predicaoPrecos`
+   - **Descrição**: Exibe uma interface web para que o usuário insira os preços históricos diretamente no navegador e visualize o resultado da previsão.
+   - **Como Usar**:
+     1. Acesse o endpoint no navegador: `http://127.0.0.1:8000/predicaoPrecos`
+     2. Insira pelo menos 60 preços separados por vírgulas no campo de texto.
+     3. Clique em "Enviar" para visualizar a previsão.
+
 ---
 
 ## **Montar e Rodar com Docker**
@@ -166,4 +174,33 @@ A organização do projeto:
 
 ---
 
-Com esta documentação, você pode montar o ambiente, entender os métodos da API e executá-la localmente ou em um contêiner Docker. 🚀
+## **Deploy na Nuvem**
+
+### **Deploy Usando AWS Elastic Beanstalk**
+
+1. **Pré-requisitos**:
+   - Instale a AWS CLI e configure com suas credenciais.
+   - Certifique-se de ter um repositório ECR (Elastic Container Registry) configurado.
+
+2. **Push da Imagem para o ECR**:
+   ```bash
+   aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account_id>.dkr.ecr.<region>.amazonaws.com
+   docker tag minha-api-fastapi:latest <account_id>.dkr.ecr.<region>.amazonaws.com/minha-api-fastapi:latest
+   docker push <account_id>.dkr.ecr.<region>.amazonaws.com/minha-api-fastapi:latest
+   ```
+
+3. **Criar a Aplicação no Elastic Beanstalk**:
+   - Acesse o console da AWS e vá até o Elastic Beanstalk.
+   - Crie uma nova aplicação com o nome desejado.
+   - Escolha a plataforma Docker e forneça o URI da imagem do ECR.
+
+4. **Configurar o Ambiente**:
+   - Configure a porta 8000 no Elastic Beanstalk.
+   - Faça o deploy e aguarde a inicialização.
+
+5. **Acessar o Endpoint da Aplicação**:
+   O Elastic Beanstalk fornecerá um domínio onde sua aplicação estará acessível.
+
+---
+
+Com esta documentação, você pode montar o ambiente, entender os métodos da API, executá-la localmente, em contêineres Docker, ou realizar deploy na nuvem. 🚀
