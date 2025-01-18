@@ -202,5 +202,3 @@ A organização do projeto:
    O Elastic Beanstalk fornecerá um domínio onde sua aplicação estará acessível.
 
 ---
-
-Com esta documentação, você pode montar o ambiente, entender os métodos da API, executá-la localmente, em contêineres Docker, ou realizar deploy na nuvem. 🚀
