@@ -11,6 +11,9 @@ matplotlib.use('Agg')  # Usa um backend sem GUI
 import matplotlib.pyplot as plt
 import io
 import base64
+from tensorflow.keras.models import load_model
+from sklearn.preprocessing import MinMaxScaler
+import pandas as pd
 
 # Configuração do logger para monitoramento
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,28 +30,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Classe FakeModel para simular previsões de preços
-class FakeModel:
-    """
-    Classe que simula um modelo de previsão de preços com base nos dados históricos fornecidos.
-    """
-    def predict(self, historical_prices: List[float], future_days: int) -> List[float]:
-        # Gera previsões baseadas no último preço da lista de preços históricos
-        last_price = historical_prices[-1] if historical_prices else 100
-        return [last_price + i * 5 for i in range(1, future_days + 1)]
+# Carregando o modelo LSTM salvo
+MODEL_PATH = 'modelo_lstm_predicao_acoes.h5'
+try:
+    model = load_model(MODEL_PATH)
+    logging.info("Modelo carregado com sucesso.")
+except Exception as e:
+    logging.error(f"Erro ao carregar o modelo: {e}")
+    model = None
 
-# Instancia o modelo fake
-model = FakeModel()
+# Configurando o escalador MinMaxScaler
+scaler = MinMaxScaler(feature_range=(0, 1))
 
 # Classe para validar os dados de entrada fornecidos pelo usuário
 class HistoricalData(BaseModel):
     """
     Representa os dados de entrada esperados pela API para previsão de preços.
     - `prices`: Lista de preços históricos.
-    - `days_ahead`: Número de dias para prever no futuro.
     """
     prices: List[float]  # Lista de preços históricos fornecidos pelo usuário
-    days_ahead: int  # Número de dias para prever no futuro
 
 # Lista para armazenar os tempos de resposta das requisições
 performance_data: List[Dict[str, float]] = []
@@ -79,29 +79,34 @@ def predict_prices(data: HistoricalData):
     Endpoint para realizar previsões de preços com base nos dados históricos fornecidos.
     - Entrada (JSON):
         {
-            "prices": [100, 105, 110, 120],
-            "days_ahead": 3
+            "prices": [100, 105, 110, 120]
         }
     - Saída (JSON):
         {
-            "future_prices": [125, 130, 135]
+            "future_price": 125.0
         }
     """
     try:
-        if len(data.prices) < 1:
-            raise ValueError("É necessário fornecer pelo menos um preço histórico.")
-        if data.days_ahead < 1:
-            raise ValueError("O número de dias deve ser maior que zero.")
-        
-        start_time = time.time()
-        predictions = model.predict(data.prices, data.days_ahead)
-        response_time = time.time() - start_time
-        
-        # Log de performance
-        logging.info(f"Prediction completed in {response_time:.4f}s for {data.days_ahead} days ahead.")
-        return {"future_prices": predictions}
-    except ValueError as e:
-        logging.error(f"Error: {str(e)}")
+        if len(data.prices) < 60:
+            raise ValueError("É necessário fornecer pelo menos 60 preços históricos para realizar a previsão.")
+
+        if model is None:
+            raise ValueError("Modelo não carregado. Verifique se o arquivo do modelo está disponível.")
+
+        # Normalizando os dados fornecidos
+        historical_prices = np.array(data.prices).reshape(-1, 1)
+        scaled_prices = scaler.fit_transform(historical_prices)
+
+        # Criando a sequência de entrada para o modelo LSTM
+        input_sequence = scaled_prices[-60:].reshape(1, 60, 1)  # Formato [samples, time_steps, features]
+
+        # Fazendo a previsão
+        prediction = model.predict(input_sequence)
+        predicted_price = scaler.inverse_transform(prediction)[0, 0]
+
+        return {"future_price": float(predicted_price)}
+    except Exception as e:
+        logging.error(f"Erro durante a previsão: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/performance")
@@ -156,6 +161,75 @@ def plot_performance():
         </body>
     </html>
     """)
+
+@app.get("/predicaoPrecos", response_class=HTMLResponse)
+def render_interface():
+    """
+    Interface gráfica para enviar dados ao endpoint /predict.
+    """
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Previsão de Preços</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; }
+            h1 { color: #333; }
+            .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+            textarea { width: 100%; height: 150px; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+            button { background-color: #007BFF; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+            button:hover { background-color: #0056b3; }
+            .output { margin-top: 20px; padding: 10px; background-color: #e9ecef; border-radius: 5px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Previsão de Preços</h1>
+            <p>Insira uma lista de preços históricos (mínimo de 60 valores) separados por vírgulas:</p>
+            <textarea id="pricesInput" placeholder="100, 105, 110, 120, ..."></textarea>
+            <button onclick="predict()">Enviar</button>
+            <div id="output" class="output"></div>
+        </div>
+        <script>
+            async function predict() {
+                // Pega os valores do textarea e tenta convertê-los para números
+                const prices = document.getElementById("pricesInput").value.split(",").map(v => parseFloat(v.trim()));
+
+                // Verifica se todos os valores são números válidos
+                if (prices.some(isNaN)) {
+                    document.getElementById("output").innerText = "Por favor, insira apenas números separados por vírgulas.";
+                    return;
+                }
+
+                // Verifica se há pelo menos 60 valores
+                if (prices.length < 60) {
+                    document.getElementById("output").innerText = "Por favor, insira pelo menos 60 valores.";
+                    return;
+                }
+
+                // Envia a requisição ao endpoint /predict
+                const response = await fetch("/predict", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prices })
+                });
+
+                // Processa a resposta
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById("output").innerText = `Preço Previsto: ${data.future_price}`;
+                } else {
+                    const error = await response.json();
+                    document.getElementById("output").innerText = `Erro: ${error.detail}`;
+                }
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 @app.get("/")
 def root():
