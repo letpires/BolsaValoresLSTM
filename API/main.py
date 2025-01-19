@@ -13,6 +13,7 @@ import io
 import base64
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
+from starlette.requests import Request
 import pandas as pd
 
 # Configuração do logger para monitoramento
@@ -47,8 +48,10 @@ class HistoricalData(BaseModel):
     """
     Representa os dados de entrada esperados pela API para previsão de preços.
     - `prices`: Lista de preços históricos.
+    - `days_ahead`: Número de dias futuros para prever.
     """
     prices: List[float]  # Lista de preços históricos fornecidos pelo usuário
+    days_ahead: int  # Número de dias futuros para previsão
 
 # Lista para armazenar os tempos de resposta das requisições
 performance_data: List[Dict[str, float]] = []
@@ -60,16 +63,30 @@ async def add_process_time_header(request: Request, call_next):
     Adiciona um cabeçalho `X-Process-Time` à resposta.
     """
     start_time = time.time()
-    response = await call_next(request)
+    days_ahead = None  # Inicializa como None para não registrar valores irrelevantes
+
+    # Verifica se a requisição é para o endpoint /predict com método POST
+    if request.method == "POST" and request.url.path == "/predict":
+        try:
+            body = await request.json()  # Lê o corpo da requisição de forma assíncrona
+            days_ahead = body.get("days_ahead", 0)  # Obtém o valor de days_ahead
+        except Exception as e:
+            logging.error(f"Erro ao extrair 'days_ahead': {e}")
+
+    response = await call_next(request)  # Processa a requisição
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
 
-    # Log do tempo de resposta
-    logging.info(f"Path: {request.url.path}, Method: {request.method}, Process Time: {process_time:.4f}s")
+    # Log do tempo de resposta com contexto
+    logging.info(f"Path: {request.url.path}, Method: {request.method}, Days Ahead: {days_ahead}, Process Time: {process_time:.4f}s")
 
-    # Armazena o tempo de resposta no monitoramento, se for uma requisição ao /predict
-    if request.url.path == "/predict":
-        performance_data.append({"path": request.url.path, "process_time": process_time})
+    # Armazena o tempo de resposta somente se for do endpoint /predict
+    if request.url.path == "/predict" and days_ahead is not None:
+        performance_data.append({
+            "path": request.url.path,
+            "process_time": process_time,
+            "days_ahead": days_ahead
+        })
 
     return response
 
@@ -79,16 +96,20 @@ def predict_prices(data: HistoricalData):
     Endpoint para realizar previsões de preços com base nos dados históricos fornecidos.
     - Entrada (JSON):
         {
-            "prices": [100, 105, 110, 120]
+            "prices": [100, 105, 110, 120, ...],
+            "days_ahead": 3
         }
     - Saída (JSON):
         {
-            "future_price": 125.0
+            "future_prices": [125.0, 130.0, 135.0]
         }
     """
     try:
         if len(data.prices) < 60:
             raise ValueError("É necessário fornecer pelo menos 60 preços históricos para realizar a previsão.")
+
+        if data.days_ahead < 1:
+            raise ValueError("O número de dias futuros deve ser pelo menos 1.")
 
         if model is None:
             raise ValueError("Modelo não carregado. Verifique se o arquivo do modelo está disponível.")
@@ -100,11 +121,21 @@ def predict_prices(data: HistoricalData):
         # Criando a sequência de entrada para o modelo LSTM
         input_sequence = scaled_prices[-60:].reshape(1, 60, 1)  # Formato [samples, time_steps, features]
 
-        # Fazendo a previsão
-        prediction = model.predict(input_sequence)
-        predicted_price = scaler.inverse_transform(prediction)[0, 0]
+        # Fazendo as previsões para múltiplos dias
+        future_prices = []
+        current_sequence = input_sequence
 
-        return {"future_price": float(predicted_price)}
+        for _ in range(data.days_ahead):
+            prediction = model.predict(current_sequence)
+            future_prices.append(prediction[0, 0])
+
+            # Adiciona a previsão ao final da sequência e remove o mais antigo
+            current_sequence = np.append(current_sequence[:, 1:, :], [[prediction[0]]], axis=1)
+
+        # Revertendo a normalização das previsões
+        future_prices = scaler.inverse_transform(np.array(future_prices).reshape(-1, 1)).flatten().tolist()
+
+        return {"future_prices": future_prices}
     except Exception as e:
         logging.error(f"Erro durante a previsão: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -116,8 +147,8 @@ def get_performance_data():
     - Saída (JSON):
         {
             "performance": [
-                {"path": "/predict", "process_time": 0.1234},
-                {"path": "/predict", "process_time": 0.0987}
+                {"path": "/predict", "process_time": 0.1234, "days_ahead": 3},
+                {"path": "/predict", "process_time": 0.0987, "days_ahead": 5}
             ]
         }
     """
@@ -127,22 +158,31 @@ def get_performance_data():
 def plot_performance():
     """
     Endpoint para gerar e exibir um gráfico visual dos tempos de resposta registrados.
-    - Saída: Gráfico exibido como uma imagem no navegador.
     """
     if not performance_data:
         return HTMLResponse("<h3>Não há dados de performance registrados ainda.</h3>")
 
-    # Extrai os tempos de resposta
+    # Extrai os tempos de resposta e dias futuros
     times = [entry["process_time"] for entry in performance_data]
+    days_ahead = [entry["days_ahead"] for entry in performance_data]
     requests_ids = list(range(1, len(times) + 1))
 
     # Cria o gráfico
-    plt.figure(figsize=(10, 6))
-    plt.plot(requests_ids, times, marker="o")
-    plt.title("Monitoramento de Tempo de Resposta da API")
-    plt.xlabel("Número da Requisição")
-    plt.ylabel("Tempo de Resposta (s)")
+    plt.figure(figsize=(12, 6))
+    plt.scatter(requests_ids, times, s=100, c="blue", edgecolor="k", label="Tempo de Resposta")
+    plt.plot(requests_ids, times, linestyle="--", alpha=0.7, label="Tendência")
+
+    # Adiciona o número de dias em cada ponto
+    for i, txt in enumerate(days_ahead):
+        plt.annotate(f"{txt} dias", (requests_ids[i], times[i]), textcoords="offset points", xytext=(0, 10), ha="center", fontsize=9)
+
+    # Configurações do gráfico
+    plt.title("Monitoramento de Tempo de Resposta da API", fontsize=14)
+    plt.xlabel("Número da Requisição", fontsize=12)
+    plt.ylabel("Tempo de Resposta (segundos)", fontsize=12)
+    plt.legend(loc="upper left")
     plt.grid(True)
+    plt.tight_layout()
 
     # Salva o gráfico em memória
     buffer = io.BytesIO()
@@ -151,17 +191,33 @@ def plot_performance():
     image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
     buffer.close()
 
-    # Retorna o gráfico embutido em HTML
+    # Explicação do gráfico
+    explanation = """
+    <h4>Sobre o Gráfico:</h4>
+    <p>
+        Este gráfico exibe o tempo de resposta da API para cada requisição, considerando:
+    </p>
+    <ul>
+        <li><strong>Eixo X:</strong> Número da requisição enviada à API.</li>
+        <li><strong>Eixo Y:</strong> Tempo de resposta da API em segundos.</li>
+        <li><strong>Números nos pontos:</strong> Número de dias futuros previstos pela API para cada requisição.</li>
+    </ul>
+    <p>
+        Use este gráfico para monitorar o desempenho da API e identificar como o número de dias futuros impacta o tempo de resposta.
+    </p>
+    """
+
+    # Retorna o gráfico embutido em HTML com explicação
     return HTMLResponse(f"""
     <html>
         <head><title>Monitoramento de Performance</title></head>
         <body>
             <h3>Gráfico de Tempo de Resposta</h3>
             <img src="data:image/png;base64,{image_base64}" alt="Gráfico de Performance">
+            {explanation}
         </body>
     </html>
     """)
-
 @app.get("/predicaoPrecos", response_class=HTMLResponse)
 def render_interface():
     """
@@ -176,12 +232,14 @@ def render_interface():
         <title>Previsão de Preços</title>
         <style>
             body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; }
-            h1 { color: #333; }
+            h1 { color: #333; text-align: center; }
             .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-            textarea { width: 100%; height: 150px; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-            button { background-color: #007BFF; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+            textarea, input { width: 100%; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+            button { background-color: #007BFF; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; margin: auto; }
             button:hover { background-color: #0056b3; }
-            .output { margin-top: 20px; padding: 10px; background-color: #e9ecef; border-radius: 5px; }
+            .output { margin-top: 20px; padding: 20px; background-color: #e9ecef; border-radius: 5px; text-align: center; }
+            .price { font-size: 24px; font-weight: bold; color: #007BFF; }
+            .error { color: red; }
         </style>
     </head>
     <body>
@@ -189,40 +247,43 @@ def render_interface():
             <h1>Previsão de Preços</h1>
             <p>Insira uma lista de preços históricos (mínimo de 60 valores) separados por vírgulas:</p>
             <textarea id="pricesInput" placeholder="100, 105, 110, 120, ..."></textarea>
+            <p>Insira o número de dias futuros para prever:</p>
+            <input type="number" id="daysAhead" placeholder="Número de dias futuros" min="1">
             <button onclick="predict()">Enviar</button>
             <div id="output" class="output"></div>
         </div>
         <script>
             async function predict() {
-                // Pega os valores do textarea e tenta convertê-los para números
                 const prices = document.getElementById("pricesInput").value.split(",").map(v => parseFloat(v.trim()));
+                const daysAhead = parseInt(document.getElementById("daysAhead").value);
 
-                // Verifica se todos os valores são números válidos
-                if (prices.some(isNaN)) {
-                    document.getElementById("output").innerText = "Por favor, insira apenas números separados por vírgulas.";
+                // Validação dos preços
+                if (prices.some(isNaN) || prices.length < 60) {
+                    document.getElementById("output").innerHTML = "<p class='error'>Por favor, insira pelo menos 60 valores numéricos separados por vírgulas.</p>";
                     return;
                 }
 
-                // Verifica se há pelo menos 60 valores
-                if (prices.length < 60) {
-                    document.getElementById("output").innerText = "Por favor, insira pelo menos 60 valores.";
+                // Validação do número de dias
+                if (isNaN(daysAhead) || daysAhead < 1) {
+                    document.getElementById("output").innerHTML = "<p class='error'>Por favor, insira um número válido de dias futuros.</p>";
                     return;
                 }
 
-                // Envia a requisição ao endpoint /predict
+                // Enviar a requisição para o endpoint /predict
                 const response = await fetch("/predict", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ prices })
+                    body: JSON.stringify({ prices, days_ahead: daysAhead })
                 });
 
-                // Processa a resposta
+                // Processar a resposta
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById("output").innerText = `Preço Previsto: ${data.future_price}`;
+                    const prices = data.future_prices.map(price => `R$ ${price.toFixed(2).replace('.', ',')}`);
+                    document.getElementById("output").innerHTML = `<p>Preços Previstos:</p><p class="price">${prices.join(" | ")}</p>`;
                 } else {
                     const error = await response.json();
-                    document.getElementById("output").innerText = `Erro: ${error.detail}`;
+                    document.getElementById("output").innerHTML = `<p class='error'>Erro: ${error.detail}</p>`;
                 }
             }
         </script>

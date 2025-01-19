@@ -111,17 +111,18 @@ A organização do projeto:
 
 ### 2. **Previsão de Preços**
    - **Endpoint**: `POST /predict`
-   - **Descrição**: Recebe dados históricos e retorna o preço previsto com base nos últimos 60 valores fornecidos.
+   - **Descrição**: Recebe dados históricos e o número de dias futuros para prever uma lista de preços.
    - **Entrada**:
      ```json
      {
-       "prices": [100, 105, 110, 120, ...]
+       "prices": [100, 105, 110, 115, 120, ...],
+       "days_ahead": 3
      }
      ```
    - **Saída**:
      ```json
      {
-       "future_price": 125.0
+       "future_prices": [125.0, 130.0, 135.0]
      }
      ```
 
@@ -145,11 +146,12 @@ A organização do projeto:
 
 ### 5. **Interface Gráfica para Previsões**
    - **Endpoint**: `GET /predicaoPrecos`
-   - **Descrição**: Exibe uma interface web para que o usuário insira os preços históricos diretamente no navegador e visualize o resultado da previsão.
+   - **Descrição**: Exibe uma interface web para que o usuário insira os preços históricos e o número de dias diretamente no navegador e visualize os resultados.
    - **Como Usar**:
      1. Acesse o endpoint no navegador: `http://127.0.0.1:8000/predicaoPrecos`
-     2. Insira pelo menos 60 preços separados por vírgulas no campo de texto.
-     3. Clique em "Enviar" para visualizar a previsão.
+     2. Insira pelo menos **60 preços históricos** separados por vírgulas no campo de texto.
+     3. Insira o número de dias futuros no campo "Número de dias futuros".
+     4. Clique em "Enviar" para visualizar a lista de preços futuros previstos.
 
 ---
 
