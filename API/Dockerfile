@@ -8,7 +8,7 @@ WORKDIR /app
 COPY . /app
 
 # Instalar as dependências do projeto
-RUN pip install --no-cache-dir fastapi uvicorn matplotlib numpy
+RUN pip install -r requirements.txt
 
 # Expor a porta 8000 para acessar a API
 EXPOSE 8000
