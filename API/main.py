@@ -13,8 +13,6 @@ import io
 import base64
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
-from starlette.requests import Request
-import pandas as pd
 
 # Configuração do logger para monitoramento
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,12 +47,17 @@ class HistoricalData(BaseModel):
     Representa os dados de entrada esperados pela API para previsão de preços.
     - `prices`: Lista de preços históricos.
     - `days_ahead`: Número de dias futuros para prever.
+    - `real_values`: Lista de valores reais (opcional).
     """
-    prices: List[float]  # Lista de preços históricos fornecidos pelo usuário
-    days_ahead: int  # Número de dias futuros para previsão
+    prices: List[float]
+    days_ahead: int
+    real_values: List[float] = None
 
 # Lista para armazenar os tempos de resposta das requisições
 performance_data: List[Dict[str, float]] = []
+
+# Lista para armazenar os dados de acurácia
+accuracy_data = []
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
@@ -94,15 +97,7 @@ async def add_process_time_header(request: Request, call_next):
 def predict_prices(data: HistoricalData):
     """
     Endpoint para realizar previsões de preços com base nos dados históricos fornecidos.
-    - Entrada (JSON):
-        {
-            "prices": [100, 105, 110, 120, ...],
-            "days_ahead": 3
-        }
-    - Saída (JSON):
-        {
-            "future_prices": [125.0, 130.0, 135.0]
-        }
+    Também calcula e armazena a acurácia, se os valores reais forem fornecidos.
     """
     try:
         if len(data.prices) < 60:
@@ -119,7 +114,7 @@ def predict_prices(data: HistoricalData):
         scaled_prices = scaler.fit_transform(historical_prices)
 
         # Criando a sequência de entrada para o modelo LSTM
-        input_sequence = scaled_prices[-60:].reshape(1, 60, 1)  # Formato [samples, time_steps, features]
+        input_sequence = scaled_prices[-60:].reshape(1, 60, 1)
 
         # Fazendo as previsões para múltiplos dias
         future_prices = []
@@ -128,17 +123,33 @@ def predict_prices(data: HistoricalData):
         for _ in range(data.days_ahead):
             prediction = model.predict(current_sequence)
             future_prices.append(prediction[0, 0])
-
-            # Adiciona a previsão ao final da sequência e remove o mais antigo
             current_sequence = np.append(current_sequence[:, 1:, :], [[prediction[0]]], axis=1)
 
         # Revertendo a normalização das previsões
         future_prices = scaler.inverse_transform(np.array(future_prices).reshape(-1, 1)).flatten().tolist()
 
-        return {"future_prices": future_prices}
+        # Calcula a acurácia se os valores reais forem fornecidos
+        accuracy = None
+        if data.real_values:
+            real_values = np.array(data.real_values[:len(future_prices)])
+            predicted_values = np.array(future_prices[:len(real_values)])
+            accuracy = np.mean(1 - abs(real_values - predicted_values) / real_values) * 100
+
+            # Armazena os dados para o gráfico
+            accuracy_data.append({
+                "real_values": real_values.tolist(),
+                "predicted_values": predicted_values.tolist(),
+                "accuracy": accuracy
+            })
+
+        return {
+            "future_prices": future_prices,
+            "accuracy": round(accuracy, 2) if accuracy is not None else None
+        }
     except Exception as e:
         logging.error(f"Erro durante a previsão: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.get("/performance")
 def get_performance_data():
@@ -218,12 +229,88 @@ def plot_performance():
         </body>
     </html>
     """)
+
+@app.get("/accuracy/plot", response_class=HTMLResponse)
+def plot_accuracy():
+    """
+    Gera um gráfico comparando os valores reais e previstos armazenados em accuracy_data.
+    """
+    if not accuracy_data:
+        return HTMLResponse("<h3>Não há dados de acurácia registrados ainda.</h3>")
+
+    # Cria o gráfico
+    plt.figure(figsize=(12, 6))
+    for i, entry in enumerate(accuracy_data):
+        real_values = entry["real_values"]
+        predicted_values = entry["predicted_values"]
+        accuracy = entry["accuracy"]
+
+        # Adiciona uma linha para cada previsão
+        plt.plot(range(len(real_values)), real_values, label=f"Real ({i+1})", marker="o")
+        plt.plot(range(len(predicted_values)), predicted_values, label=f"Previsto ({i+1}) - {accuracy:.2f}%", marker="x")
+
+    plt.title("Comparação de Previsão e Acurácia", fontsize=14)
+    plt.xlabel("Dias Futuros", fontsize=12)
+    plt.ylabel("Preço", fontsize=12)
+    plt.legend()
+    plt.grid()
+
+    # Salva o gráfico em memória
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format="png")
+    buffer.seek(0)
+    image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    buffer.close()
+
+    # Retorna o gráfico como HTML
+    return HTMLResponse(f"""
+    <html>
+        <head><title>Gráfico de Acurácia</title></head>
+        <body>
+            <h3>Gráfico de Comparação de Previsão</h3>
+            <img src="data:image/png;base64,{image_base64}" alt="Gráfico de Acurácia">
+        </body>
+    </html>
+    """)
+
 @app.get("/predicaoPrecos", response_class=HTMLResponse)
 def render_interface():
     """
     Interface gráfica para enviar dados ao endpoint /predict.
+    Também exibe os resultados mais recentes de previsão, se existirem.
     """
-    html_content = """
+    # Verifica se há dados de previsão registrados
+    latest_data = accuracy_data[-1] if accuracy_data else None
+
+    # HTML do container de resultados (inicialmente vazio ou com os últimos dados)
+    results_html = """
+    <div id="results" class="output">
+        <h2>Últimos Resultados:</h2>
+        <p>Realize uma previsão para ver os resultados aqui.</p>
+    </div>
+    """
+    if latest_data:
+        real_values = latest_data["real_values"]
+        predicted_values = latest_data["predicted_values"]
+        accuracy = latest_data["accuracy"]
+
+        # Formata os preços para exibição
+        formatted_predicted = [f"R$ {price:.2f}".replace('.', ',') for price in predicted_values]
+        formatted_real = [f"R$ {price:.2f}".replace('.', ',') for price in real_values]
+
+        results_html = f"""
+        <div id="results" class="output">
+            <h2>Últimos Resultados:</h2>
+            <p><strong>Valores Previstos:</strong></p>
+            <p class="price">{' | '.join(formatted_predicted)}</p>
+            <p><strong>Valores Reais:</strong></p>
+            <p>{' | '.join(formatted_real)}</p>
+            <p><strong>Acurácia:</strong> <span class="accuracy">{accuracy:.2f}%</span></p>
+        </div>
+        """
+
+    # HTML principal com formulário de entrada e resultados recentes
+    html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -231,15 +318,16 @@ def render_interface():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Previsão de Preços</title>
         <style>
-            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; }
-            h1 { color: #333; text-align: center; }
-            .container { max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-            textarea, input { width: 100%; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-            button { background-color: #007BFF; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; margin: auto; }
-            button:hover { background-color: #0056b3; }
-            .output { margin-top: 20px; padding: 20px; background-color: #e9ecef; border-radius: 5px; text-align: center; }
-            .price { font-size: 24px; font-weight: bold; color: #007BFF; }
-            .error { color: red; }
+            body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; }}
+            h1 {{ color: #333; text-align: center; }}
+            .container {{ max-width: 600px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }}
+            textarea, input {{ width: 100%; margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }}
+            button {{ background-color: #007BFF; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; margin: auto; }}
+            button:hover {{ background-color: #0056b3; }}
+            .output {{ margin-top: 20px; padding: 20px; background-color: #e9ecef; border-radius: 5px; text-align: center; }}
+            .price {{ font-size: 24px; font-weight: bold; color: #007BFF; }}
+            .accuracy {{ color: green; font-weight: bold; }}
+            .error {{ color: red; }}
         </style>
     </head>
     <body>
@@ -249,48 +337,59 @@ def render_interface():
             <textarea id="pricesInput" placeholder="100, 105, 110, 120, ..."></textarea>
             <p>Insira o número de dias futuros para prever:</p>
             <input type="number" id="daysAhead" placeholder="Número de dias futuros" min="1">
+            <p>Insira os valores reais (opcional, separados por vírgulas):</p>
+            <textarea id="realValuesInput" placeholder="110, 115, 120, ..."></textarea>
             <button onclick="predict()">Enviar</button>
-            <div id="output" class="output"></div>
+            {results_html}
         </div>
         <script>
-            async function predict() {
+            async function predict() {{
                 const prices = document.getElementById("pricesInput").value.split(",").map(v => parseFloat(v.trim()));
                 const daysAhead = parseInt(document.getElementById("daysAhead").value);
+                const realValues = document.getElementById("realValuesInput").value.split(",").map(v => parseFloat(v.trim()));
 
                 // Validação dos preços
-                if (prices.some(isNaN) || prices.length < 60) {
-                    document.getElementById("output").innerHTML = "<p class='error'>Por favor, insira pelo menos 60 valores numéricos separados por vírgulas.</p>";
+                if (prices.some(isNaN) || prices.length < 60) {{
+                    alert("Por favor, insira pelo menos 60 valores numéricos separados por vírgulas.");
                     return;
-                }
+                }}
 
                 // Validação do número de dias
-                if (isNaN(daysAhead) || daysAhead < 1) {
-                    document.getElementById("output").innerHTML = "<p class='error'>Por favor, insira um número válido de dias futuros.</p>";
+                if (isNaN(daysAhead) || daysAhead < 1) {{
+                    alert("Por favor, insira um número válido de dias futuros.");
                     return;
-                }
+                }}
 
                 // Enviar a requisição para o endpoint /predict
-                const response = await fetch("/predict", {
+                const response = await fetch("/predict", {{
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ prices, days_ahead: daysAhead })
-                });
+                    headers: {{ "Content-Type": "application/json" }},
+                    body: JSON.stringify({{ prices, days_ahead: daysAhead, real_values: realValues }})
+                }});
 
                 // Processar a resposta
-                if (response.ok) {
+                if (response.ok) {{
                     const data = await response.json();
-                    const prices = data.future_prices.map(price => `R$ ${price.toFixed(2).replace('.', ',')}`);
-                    document.getElementById("output").innerHTML = `<p>Preços Previstos:</p><p class="price">${prices.join(" | ")}</p>`;
-                } else {
+                    
+                    // Atualizar os resultados na página
+                    const resultsDiv = document.getElementById("results");
+                    resultsDiv.innerHTML = `
+                        <h2>Últimos Resultados:</h2>
+                        <p><strong>Valores Previstos:</strong></p>
+                        <p class="price">${{data.future_prices.map(p => `R$ ${{p.toFixed(2).replace('.', ',')}}`).join(' | ')}}</p>
+                        <p><strong>Acurácia:</strong> <span class="accuracy">${{data.accuracy ? data.accuracy.toFixed(2) : 'N/A'}}%</span></p>
+                    `;
+                }} else {{
                     const error = await response.json();
-                    document.getElementById("output").innerHTML = `<p class='error'>Erro: ${error.detail}</p>`;
-                }
-            }
+                    alert("Erro: " + error.detail);
+                }}
+            }}
         </script>
     </body>
     </html>
     """
     return HTMLResponse(content=html_content)
+
 
 @app.get("/")
 def root():
