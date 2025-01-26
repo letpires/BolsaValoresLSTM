@@ -153,7 +153,7 @@ A organização do projeto:
      1. Acesse o endpoint no navegador: `http://127.0.0.1:8000/predicaoPrecos`
      2. Insira pelo menos **60 preços históricos** separados por vírgulas no campo de texto.
      3. Insira o número de dias futuros no campo "Número de dias futuros".
-     4. (Opcional) Insira os valores reais correspondentes no campo "Valores reais".
+     4. Insira os valores reais correspondentes no campo "Valores reais".
      5. Clique em "Enviar" para visualizar a lista de preços futuros previstos.
 
 ### 6. **Gráfico de Acurácia**

@@ -47,7 +47,7 @@ class HistoricalData(BaseModel):
     Representa os dados de entrada esperados pela API para previsão de preços.
     - `prices`: Lista de preços históricos.
     - `days_ahead`: Número de dias futuros para prever.
-    - `real_values`: Lista de valores reais (opcional).
+    - `real_values`: Lista de valores reais.
     """
     prices: List[float]
     days_ahead: int
@@ -337,7 +337,7 @@ def render_interface():
             <textarea id="pricesInput" placeholder="100, 105, 110, 120, ..."></textarea>
             <p>Insira o número de dias futuros para prever:</p>
             <input type="number" id="daysAhead" placeholder="Número de dias futuros" min="1">
-            <p>Insira os valores reais (opcional, separados por vírgulas):</p>
+            <p>Insira os valores reais (separados por vírgulas):</p>
             <textarea id="realValuesInput" placeholder="110, 115, 120, ..."></textarea>
             <button onclick="predict()">Enviar</button>
             {results_html}
