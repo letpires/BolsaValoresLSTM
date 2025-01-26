@@ -115,14 +115,16 @@ A organização do projeto:
    - **Entrada**:
      ```json
      {
-       "prices": [100, 105, 110, 115, 120, ...],
-       "days_ahead": 3
+         "prices": [100, 105, 110, 115, 120, ...],
+         "days_ahead": 3,
+         "real_values": [125, 130, 135] // Opcional
      }
      ```
    - **Saída**:
      ```json
      {
-       "future_prices": [125.0, 130.0, 135.0]
+        "future_prices": [125.0, 130.0, 135.0],
+        "accuracy": 95.67 // Opcional, se valores reais forem fornecidos
      }
      ```
 
@@ -151,8 +153,14 @@ A organização do projeto:
      1. Acesse o endpoint no navegador: `http://127.0.0.1:8000/predicaoPrecos`
      2. Insira pelo menos **60 preços históricos** separados por vírgulas no campo de texto.
      3. Insira o número de dias futuros no campo "Número de dias futuros".
-     4. Clique em "Enviar" para visualizar a lista de preços futuros previstos.
+     4. (Opcional) Insira os valores reais correspondentes no campo "Valores reais".
+     5. Clique em "Enviar" para visualizar a lista de preços futuros previstos.
 
+### 6. **Gráfico de Acurácia**
+   - **Endpoint**: `GET /accuracy/plot`
+   - **Descrição**: Gera um gráfico visual mostrando a acurácia das previsões realizadas com base nos valores reais fornecidos.
+   - **Saída**: Um gráfico exibido no navegador.
+   - **Notas:**: O gráfico exibe os valores reais, os valores previstos e a acurácia calculada para cada previsão registrada.
 ---
 
 ## **Montar e Rodar com Docker**
