@@ -65,6 +65,7 @@ Conclusão: O modelo apresentou excelente desempenho em ambas as fases (treino e
 
 ## Pontos de melhoria
 
+-- ADICIONAR IMAGEM DO GRAFICO REPRESENTANDO FINAIS DE SEMANA
 Preenchimento de Lacunas nos Finais de Semana:
 
 Atualmente, os finais de semana não possuem dados, o que pode causar inconsistências nos padrões temporais.
