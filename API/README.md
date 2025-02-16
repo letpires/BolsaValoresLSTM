@@ -211,4 +211,16 @@ A organização do projeto:
 5. **Acessar o Endpoint da Aplicação**:
    O Elastic Beanstalk fornecerá um domínio onde sua aplicação estará acessível.
 
+### **Deploy Usando uma Conta RENDER(Gratuito)**
+
+1. Crie uma conta no Render
+2.Crie um novo serviço Web
+3.Escolha "Docker" como opção de deploy
+4.Forneça o link do repositório do seu projeto (GitHub/GitLab)
+5.Configure variáveis de ambiente e publique!
+
+**LINK da Nossa API na NUVEM**:
+ ```
+   https://bolsavaloreslstm.onrender.com/docs
+   ```
 ---
