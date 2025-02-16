@@ -214,13 +214,13 @@ A organização do projeto:
 ### **Deploy Usando uma Conta RENDER(Gratuito)**
 
 1. Crie uma conta no Render
+
+2. Crie um novo serviço Web
+  
+3. Escolha "Docker" como opção de deploy
+  
+4. Forneça o link do repositório do seu projeto (GitHub/GitLab)
    
-2.Crie um novo serviço Web
-
-3.Escolha "Docker" como opção de deploy
-
-4.Forneça o link do repositório do seu projeto (GitHub/GitLab)
-
 5.Configure variáveis de ambiente e publique!
 
 **LINK da Nossa API na NUVEM**:
