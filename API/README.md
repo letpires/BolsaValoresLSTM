@@ -227,4 +227,5 @@ A organização do projeto:
  ```
    https://bolsavaloreslstm.onrender.com/docs
    ```
+Obs: O primeiro acesso pode demorar um pouco pois o container fica em sleeping (Stateless) para economizar recurso e inicia quando é chamado.
 ---
