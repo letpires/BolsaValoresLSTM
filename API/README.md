@@ -220,8 +220,8 @@ A organização do projeto:
 3. Escolha "Docker" como opção de deploy
   
 4. Forneça o link do repositório do seu projeto (GitHub/GitLab)
-   
-5.Configure variáveis de ambiente e publique!
+
+5. Configure variáveis de ambiente e publique!
 
 **LINK da Nossa API na NUVEM**:
  ```
